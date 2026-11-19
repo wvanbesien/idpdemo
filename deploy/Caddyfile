@@ -1,0 +1,9 @@
+# Used by the optional `caddy` profile in docker-compose.yml.
+# Caddy gets and renews certificates automatically and sets X-Forwarded-* headers.
+{$OIDC_HOSTNAME} {
+	reverse_proxy oidc:8080
+}
+
+{$SAML_HOSTNAME} {
+	reverse_proxy saml:8080
+}

@@ -24,7 +24,91 @@ ghcr.io/wvanbesien/idp-demo-saml:latest
 
 The workflow runs on pushes to `main`, `v*` tags and manually (Actions → *Build and publish images* → Run workflow). To also push to Docker Hub, set repo variable `DOCKERHUB_NAMESPACE` and secrets `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. If the GHCR package is private, make it public (Package settings) or `docker login ghcr.io`.
 
-## Run: OIDC
+## Deployment with Docker Compose
+
+`docker-compose.yml` runs both apps from the published images and can optionally put a Caddy reverse proxy in front that gets and renews TLS certificates automatically.
+
+### 1. Prerequisites
+- A host with Docker and the Compose plugin.
+- Two DNS names pointing at the host, one per app (for example `oidc-demo.example.com` and `saml-demo.example.com`).
+- The public URL of each app, which becomes its `BASE_URL`. The IdP can only call back to URLs you register, so decide these first.
+
+### 2. Configure
+```bash
+git clone https://github.com/wvanbesien/idpdemo.git && cd idpdemo
+cp .env.example .env
+openssl rand -hex 32        # paste the result into SESSION_SECRET in .env
+```
+Edit `.env`:
+
+| Variable | Meaning |
+|---|---|
+| `SESSION_SECRET` | Required. Random value so sessions survive restarts |
+| `OIDC_BASE_URL`, `SAML_BASE_URL` | Public HTTPS URLs, no port for 443, no trailing slash. These must match what is registered at the IdP |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPE` | OIDC client settings from the IdP |
+| `SAML_IDP_METADATA_URL` | IdP metadata URL (provides SSO/SLO URLs and signing certificate) |
+| `OIDC_HOSTNAME`, `SAML_HOSTNAME` | Only for the bundled Caddy proxy: hostnames without `https://` |
+| `IMAGE_REGISTRY`, `IMAGE_TAG` | Where to pull from (default `ghcr.io/wvanbesien`, `latest`). Pin a tag for repeatable deployments |
+
+### 3. Register the apps at the IdP
+Use the same URLs as in `.env`:
+
+| App | Setting | Value |
+|---|---|---|
+| OIDC | Redirect URI | `<OIDC_BASE_URL>/callback` |
+| OIDC | Post-logout redirect URI | `<OIDC_BASE_URL>/logged-out` |
+| SAML | Entity ID | `<SAML_BASE_URL>/metadata` |
+| SAML | ACS URL (HTTP-POST) | `<SAML_BASE_URL>/saml/acs` |
+| SAML | SLO URL | `<SAML_BASE_URL>/saml/slo` |
+
+For SAML you can instead import `<SAML_BASE_URL>/metadata` once the app is running.
+
+### 4. Start
+
+**Option A: bundled Caddy (automatic HTTPS).** Ports 80 and 443 must be reachable from the internet so Let's Encrypt can validate the hostnames.
+```bash
+docker compose pull
+docker compose --profile caddy up -d
+```
+
+**Option B: your own TLS in front** (cloud load balancer, ingress, existing proxy). The apps listen on plain HTTP on host ports `8080` (OIDC) and `8081` (SAML), configurable with `OIDC_HOST_PORT` / `SAML_HOST_PORT`. Terminate TLS on 443 and forward to those ports, passing the standard `X-Forwarded-Proto` and `X-Forwarded-For` headers (`TRUST_PROXY=true` is already set in the compose file).
+```bash
+docker compose pull
+docker compose up -d
+```
+
+In both cases the containers are not given port 443 themselves; TLS is handled by the proxy.
+
+### 5. Verify
+```bash
+docker compose ps                      # both apps should become "healthy"
+docker compose logs -f oidc saml
+curl -fsS https://<SAML_BASE_URL host>/healthz    # prints: ok
+```
+Browse to each `BASE_URL`: you should be redirected to the IdP, then land back on the details page. Its *Application configuration* section lists the redirect URI / entity ID / ACS URL the app is really using; compare them with what you registered if the IdP reports a mismatch.
+
+### Operations
+```bash
+docker compose pull && docker compose up -d     # update to the latest images
+docker compose down                             # stop and remove (sessions are in memory and are lost)
+docker compose up -d --build                    # build from source instead of pulling
+```
+- Run a single replica of each app: sessions are kept in memory.
+- If `docker compose pull` is denied, the GHCR packages are private: make them public in the package settings or `docker login ghcr.io`.
+- Need a custom CA for an internal IdP? Mount the CA file and set `NODE_EXTRA_CA_CERTS` on the app service.
+- Other settings from the tables below (for example `SAML_FORCE_AUTHN`, `OIDC_EXTRA_AUTH_PARAMS`) can be added to the service's `environment:` in `docker-compose.yml`.
+
+### Common problems
+| Symptom | Likely cause |
+|---|---|
+| IdP says redirect URI / ACS mismatch | `BASE_URL` differs from what is registered (scheme, host, trailing slash) |
+| Login loops back to the login page or "No login in progress" | Proxy not sending `X-Forwarded-Proto: https`, or `BASE_URL` is `http://` while users browse over HTTPS (cookie is not stored) |
+| Everyone logged out after restart | `SESSION_SECRET` not set to a fixed value |
+| SAML "audience" or "recipient" error | Entity ID / ACS at the IdP does not match `SAML_BASE_URL` |
+| SAML "invalid signature" | Wrong IdP certificate; re-import metadata (the app reads it at startup, so restart after rotating) |
+| Caddy cannot get certificates | DNS does not point at the host yet, or ports 80/443 are blocked |
+
+## Run a single container: OIDC
 
 Register an OIDC web-app/client at the IdP with redirect URI `<BASE_URL>/callback` (and post-logout redirect `<BASE_URL>/logged-out`), then:
 
@@ -49,7 +133,7 @@ docker run --rm -p 8080:8080 \
 | `OIDC_EXTRA_AUTH_PARAMS` | `{}` | JSON, e.g. `{"acr_values":"..."}` |
 | `OIDC_ALLOW_INSECURE` | `false` | Allow an `http://` issuer (dev only) |
 
-## Run: SAML
+## Run a single container: SAML
 
 Easiest: give the app the IdP metadata URL, then register the SP at the IdP using `<BASE_URL>/metadata` (SP entity ID `<BASE_URL>/metadata`, ACS `<BASE_URL>/saml/acs` HTTP-POST, SLO `<BASE_URL>/saml/slo`). The app starts without IdP config so you can fetch `/metadata` first.
 

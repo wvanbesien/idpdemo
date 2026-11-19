@@ -1,18 +1,62 @@
-# Quick local run:  docker compose up --build
-# Fill in the values (or put them in a .env file next to this one).
+# Deploys both demo apps from the published images, optionally behind a Caddy
+# reverse proxy that obtains TLS certificates automatically.
+#
+#   cp .env.example .env     # edit the values
+#   docker compose pull
+#   docker compose up -d                       # apps only (you provide TLS in front, e.g. a load balancer)
+#   docker compose --profile caddy up -d       # apps + Caddy on 80/443 with automatic HTTPS
+#
+# To build from source instead of pulling:  docker compose up -d --build
+x-common: &common
+  restart: unless-stopped
+  environment: &common-env
+    TRUST_PROXY: "true"
+    SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+    SESSION_TIMEOUT_SECONDS: ${SESSION_TIMEOUT_SECONDS:-3600}
+
 services:
   oidc:
+    <<: *common
+    image: ${IMAGE_REGISTRY:-ghcr.io/wvanbesien}/idp-demo-oidc:${IMAGE_TAG:-latest}
     build: ./oidc-app
-    ports: ["8080:8080"]
+    # Without Caddy, publish the port so your own proxy/load balancer can reach it.
+    ports: ["${OIDC_HOST_PORT:-8080}:8080"]
     environment:
-      BASE_URL: ${OIDC_BASE_URL:-http://localhost:8080}
-      OIDC_ISSUER: ${OIDC_ISSUER:?set OIDC_ISSUER}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      <<: *common-env
+      BASE_URL: ${OIDC_BASE_URL:?set OIDC_BASE_URL in .env}
+      OIDC_ISSUER: ${OIDC_ISSUER:?set OIDC_ISSUER in .env}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID in .env}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
+      OIDC_CLIENT_AUTH: ${OIDC_CLIENT_AUTH:-}
+
   saml:
+    <<: *common
+    image: ${IMAGE_REGISTRY:-ghcr.io/wvanbesien}/idp-demo-saml:${IMAGE_TAG:-latest}
     build: ./saml-app
-    ports: ["8081:8080"]
+    ports: ["${SAML_HOST_PORT:-8081}:8080"]
     environment:
-      BASE_URL: ${SAML_BASE_URL:-http://localhost:8081}
-      SAML_IDP_METADATA_URL: ${SAML_IDP_METADATA_URL:?set SAML_IDP_METADATA_URL}
+      <<: *common-env
+      BASE_URL: ${SAML_BASE_URL:?set SAML_BASE_URL in .env}
+      SAML_IDP_METADATA_URL: ${SAML_IDP_METADATA_URL:?set SAML_IDP_METADATA_URL in .env}
+      SAML_NAMEID_FORMAT: ${SAML_NAMEID_FORMAT:-}
+
+  # Optional TLS terminator: enable with `--profile caddy`. Needs DNS for both hostnames pointing
+  # at this host and ports 80/443 reachable from the internet (for Let's Encrypt).
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      OIDC_HOSTNAME: ${OIDC_HOSTNAME:-}
+      SAML_HOSTNAME: ${SAML_HOSTNAME:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [oidc, saml]
+
+volumes:
+  caddy_data:
+  caddy_config:
