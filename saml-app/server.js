@@ -31,7 +31,7 @@ const cfg = {
   nameIdFormat: process.env.SAML_NAMEID_FORMAT || undefined,
   binding: (process.env.SAML_AUTHN_BINDING || 'redirect').toLowerCase(),
   forceAuthn: envBool('SAML_FORCE_AUTHN', false),
-  wantAssertionsSigned: envBool('SAML_WANT_ASSERTIONS_SIGNED', true),
+  wantAssertionsSigned: envBool('SAML_WANT_ASSERTIONS_SIGNED', false),
   wantResponseSigned: envBool('SAML_WANT_RESPONSE_SIGNED', false),
   disableAuthnContext: envBool('SAML_DISABLE_REQUESTED_AUTHN_CONTEXT', true),
   clockSkewSeconds: envInt('SAML_CLOCK_SKEW_SECONDS', 60),
