@@ -135,6 +135,9 @@ docker run --rm -p 8080:8080 \
 
 ## Run a single container: SAML
 
+
+**Which metadata goes where:** `SAML_IDP_METADATA_URL` is one-way: the app *reads* the IdP's metadata (SSO/SLO URLs, signing certificate). It tells the IdP nothing. The IdP needs the app's own metadata, served at `<BASE_URL>/metadata`: import that URL (or download the XML and upload it) in the IdP's SAML application settings, or enter the entity ID, ACS and SLO URLs by hand. The IdP must be able to reach the URL if you import by URL; otherwise upload the file.
+
 Easiest: give the app the IdP metadata URL, then register the SP at the IdP using `<BASE_URL>/metadata` (SP entity ID `<BASE_URL>/metadata`, ACS `<BASE_URL>/saml/acs` HTTP-POST, SLO `<BASE_URL>/saml/slo`). The app starts without IdP config so you can fetch `/metadata` first.
 
 ```bash
@@ -152,7 +155,7 @@ docker run --rm -p 8081:8080 \
 | `SAML_SP_ENTITY_ID` | `$BASE_URL/metadata` | Also the audience unless `SAML_AUDIENCE` is set (`false` disables the check) |
 | `SAML_NAMEID_FORMAT` | library default | e.g. `urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress` |
 | `SAML_AUTHN_BINDING` | `redirect` | or `post` |
-| `SAML_WANT_ASSERTIONS_SIGNED` / `SAML_WANT_RESPONSE_SIGNED` | `true` / `false` | At least one must be signed |
+| `SAML_WANT_ASSERTIONS_SIGNED` / `SAML_WANT_RESPONSE_SIGNED` | `false` / `false` | By default either the Response or the Assertion may be signed (at least one valid signature is always required). Set one to `true` to insist on that element |
 | `SAML_FORCE_AUTHN` | `false` | |
 | `SAML_DISABLE_REQUESTED_AUTHN_CONTEXT` | `true` | |
 | `SAML_CLOCK_SKEW_SECONDS` | `60` | |
