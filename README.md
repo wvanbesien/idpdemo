@@ -105,7 +105,7 @@ docker compose up -d --build                    # build from source instead of p
 | Login loops back to the login page or "No login in progress" | Proxy not sending `X-Forwarded-Proto: https`, or `BASE_URL` is `http://` while users browse over HTTPS (cookie is not stored) |
 | Everyone logged out after restart | `SESSION_SECRET` not set to a fixed value |
 | SAML "audience" or "recipient" error | Entity ID / ACS at the IdP does not match `SAML_BASE_URL` |
-| SAML "invalid signature" | Wrong IdP certificate; re-import metadata (the app reads it at startup, so restart after rotating) |
+| SAML "invalid signature" | Usually the IdP signs with a different certificate than the one in its metadata, or only the Response (not the Assertion) is signed. The error page and `docker compose logs saml` now state which: they list the certificate fingerprint found in the response vs the configured one, which elements are signed, and the likely fix. The app reads the IdP metadata at startup, so restart after rotating certificates |
 | Caddy cannot get certificates | DNS does not point at the host yet, or ports 80/443 are blocked |
 
 ## Run a single container: OIDC
@@ -157,6 +157,7 @@ docker run --rm -p 8081:8080 \
 | `SAML_DISABLE_REQUESTED_AUTHN_CONTEXT` | `true` | |
 | `SAML_CLOCK_SKEW_SECONDS` | `60` | |
 | `SAML_HONOR_SESSION_NOT_ON_OR_AFTER` | `true` | End the app session when the IdP says so |
+| `SAML_DEBUG` | `false` | Also log the full raw SAMLResponse XML on rejection (contains user data – use for troubleshooting only) |
 | `SAML_SP_PRIVATE_KEY` / `SAML_SP_CERT` (or `_FILE`), `SAML_SIGN_REQUESTS` | – | Needed to decrypt encrypted assertions / sign requests |
 
 ## Common settings (both apps)
