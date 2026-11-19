@@ -1,0 +1,18 @@
+# Quick local run:  docker compose up --build
+# Fill in the values (or put them in a .env file next to this one).
+services:
+  oidc:
+    build: ./oidc-app
+    ports: ["8080:8080"]
+    environment:
+      BASE_URL: ${OIDC_BASE_URL:-http://localhost:8080}
+      OIDC_ISSUER: ${OIDC_ISSUER:?set OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
+  saml:
+    build: ./saml-app
+    ports: ["8081:8080"]
+    environment:
+      BASE_URL: ${SAML_BASE_URL:-http://localhost:8081}
+      SAML_IDP_METADATA_URL: ${SAML_IDP_METADATA_URL:?set SAML_IDP_METADATA_URL}
