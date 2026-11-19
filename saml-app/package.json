@@ -1,0 +1,17 @@
+{
+  "name": "idp-demo-saml",
+  "version": "1.0.0",
+  "description": "Minimal SAML 2.0 service provider that shows the assertion, config and session details",
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "dependencies": {
+    "@node-saml/node-saml": "^5.1.0",
+    "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "fast-xml-parser": "^5.2.0",
+    "memorystore": "^1.6.7"
+  }
+}
