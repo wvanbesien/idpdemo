@@ -27,8 +27,16 @@ export function boot(defaultCookieName) {
   const Store = memorystore(session);
   const app = express();
   app.disable('x-powered-by');
+  // Behind a TLS-terminating proxy/ingress (Traefik, Azure Container Apps, ALB...) the app only sees plain HTTP.
+  // Without trusting X-Forwarded-Proto, express-session refuses to set a Secure cookie, no session is ever stored
+  // and login loops forever. So when BASE_URL is https and we are not terminating TLS ourselves, trust the proxy by default.
   const tp = process.env.TRUST_PROXY;
-  app.set('trust proxy', tp === undefined || tp === '' ? false : /^\d+$/.test(tp) ? Number(tp) : /^(true|false)$/i.test(tp) ? tp === 'true' : tp);
+  const tpUnset = tp === undefined || tp === '';
+  const autoTrust = tpUnset && baseUrl.startsWith('https://') && !useTls;
+  app.set('trust proxy', autoTrust ? true : tpUnset ? false : /^\d+$/.test(tp) ? Number(tp) : /^(true|false)$/i.test(tp) ? tp === 'true' : tp);
+  console.log(`trust proxy: ${autoTrust ? 'true (automatic: BASE_URL is https and TLS is not terminated by this container; set TRUST_PROXY to override)' : tpUnset ? 'false' : tp}`);
+  if (secure && !app.get('trust proxy') && !useTls)
+    console.warn('WARNING: cookies are Secure but TRUST_PROXY is off and TLS is not terminated here. Behind an HTTPS proxy, login will loop. Set TRUST_PROXY=true.');
   app.get('/healthz', (_req, res) => res.type('text').send('ok'));
   app.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use(

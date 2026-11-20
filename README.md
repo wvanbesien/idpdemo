@@ -98,11 +98,18 @@ docker compose up -d --build                    # build from source instead of p
 - Need a custom CA for an internal IdP? Mount the CA file and set `NODE_EXTRA_CA_CERTS` on the app service.
 - Other settings from the tables below (for example `SAML_FORCE_AUTHN`, `OIDC_EXTRA_AUTH_PARAMS`) can be added to the service's `environment:` in `docker-compose.yml`.
 
+### Azure Container Apps and other managed platforms
+- Set ingress **target port 8080** (or whatever `PORT` is) and let the platform terminate TLS; set `BASE_URL` to the public `https://` FQDN (for Azure: `https://<app>.<env-hash>.<region>.azurecontainerapps.io` or your custom domain).
+- Set **min replicas = max replicas = 1**. Sessions are held in memory, so with several replicas (or scale-to-zero) the browser lands on an instance that has no session and login loops. Session affinity helps only partially; one replica is the reliable setting.
+- Set a fixed `SESSION_SECRET` (use a secret reference).
+- `TRUST_PROXY` is turned on automatically when `BASE_URL` is `https://` and the container is not serving TLS itself. If you set it explicitly to `false` behind an HTTPS proxy, no session cookie is stored and login loops forever (the log prints a warning).
+- Redirect loop checklist: `docker logs` / Log stream should show `trust proxy: true`; `/healthz` works; only one replica is running; `BASE_URL` matches the URL in the browser exactly.
+
 ### Common problems
 | Symptom | Likely cause |
 |---|---|
 | IdP says redirect URI / ACS mismatch | `BASE_URL` differs from what is registered (scheme, host, trailing slash) |
-| Login loops back to the login page or "No login in progress" | Proxy not sending `X-Forwarded-Proto: https`, or `BASE_URL` is `http://` while users browse over HTTPS (cookie is not stored) |
+| Login loops back to the login page or "No login in progress" (more than one replica, or Secure cookie not stored) | Proxy not sending `X-Forwarded-Proto: https`, or `BASE_URL` is `http://` while users browse over HTTPS (cookie is not stored) |
 | Everyone logged out after restart | `SESSION_SECRET` not set to a fixed value |
 | SAML "audience" or "recipient" error | Entity ID / ACS at the IdP does not match `SAML_BASE_URL` |
 | SAML "invalid signature" | Usually the IdP signs with a different certificate than the one in its metadata, or only the Response (not the Assertion) is signed. The error page and `docker compose logs saml` now state which: they list the certificate fingerprint found in the response vs the configured one, which elements are signed, and the likely fix. The app reads the IdP metadata at startup, so restart after rotating certificates |
